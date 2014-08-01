@@ -1,0 +1,21 @@
+
+int SCALING_ACCEL_X=-5;//-125 through 140
+int SCALING_ACCEL_Y=0;// -129  t 131
+int SCALING_ACCEL_Z=13;//-140 t 115
+//let 128 be 1 g
+int Accelhistory_x[]={0,0,0,0,0,0,0,0,0,0};
+int Accelhistory_y[]={0,0,0,0,0,0,0,0,0,0};
+int Accelhistory_z[]={0,0,0,0,0,0,0,0,0,0};
+int currentInsertion=0;
+double ROLLCALIBRATION=0;
+double PITCHCALIBRATION=0;
+
+void DegreesRoll_Pitch(double* RP);//RP is a two elemnt array that gets populated with the roll and pitch angels in degrees
+			//this updates the accelerometer and then calculates two angles from the one set 
+//let w=(theta, omega, omicron)			
+//these three functions give you w and w'
+
+int vectorSum(int* array, int length);
+double getangleRoll_Pitch(double* accelData,int axis);//accel data is x,y,z data, axis is either x (0) or y (1)
+			//this function does not update the accelerometer data, it does this so that the angles can both 
+			//be computed from one sample vector and not two consecutive ones

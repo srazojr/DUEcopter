@@ -1,0 +1,32 @@
+int pingPin = 49;
+int inPin = 31;
+ 
+void setup() {
+Serial.begin(9600);
+pinMode(pingPin, OUTPUT);
+pinMode(inPin, INPUT);
+}
+ 
+void loop()
+{  
+  digitalWrite(pingPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(pingPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(pingPin, LOW);
+  
+  
+  duration = pulseIn(inPin, HIGH);
+  
+  inches = duration / 74 / 2;
+  cm = duration / 29 / 2;
+  
+  
+ Serial.print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+ Serial.print("inches:  ");
+ Serial.print(inches);
+ Serial.print(\ncm    :  );
+ Serial.print(cm);
+ 
+  delay(200);
+}

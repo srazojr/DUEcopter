@@ -1,0 +1,324 @@
+#include <math.h>
+
+//constants
+int SCALING_MAGNETOMETER_X =0;
+int SCALING_MAGNETOMETER_Y =0;
+int SCALING_MAGNETOMETER_Z =0;
+
+
+int SCALING_GYRO_X=0;
+int SCALING_GYRO_Y=-40;
+int SCALING_GYRO_Z=-10;
+
+
+//functions=======================================================     external
+void initialize_i2c();//this is called first
+
+void updateGyro(int* dataGyro);  // int * dataGyro  is a 3 element array head
+double DegreesYaw();//north=0, south +90, west-90			<-- edit those for new configuration
+			//this uses the magnetometer to calculate yaw
+
+//================================================================      internal
+
+void updateTemp(int *dataTemp);//get temp, dataTemp is a pointer to one int`			<------not working yet
+void updateAccel(double * dataAccel);// float* dataAccel is a 3 element array head  
+void readFrom(byte deviceAddress, byte registerAddress, int numOfBytes, byte *buffer);//device address, register to readfrom, bytes to read, pointer to a byte array of length numOfBytes
+void writeTo(byte deviceAddress, byte registerAddress, byte byteToWrite);
+void updateCompass();
+
+//================================================================
+// i2c declarations----------------------
+
+const char ADXL345DEVICE =(0x53); // Device address as specified in data sheet
+const char POWER_CTL_ACCEL = 0x2D;	//Power Control Register
+const char DATA_FORMAT_ACCEL = 0x31;
+const char DATAX0_ACCEL = 0x32;	//X-Axis Data 0
+//char DATAX1 = 0x33;	//X-Axis Data 1
+//char DATAY0 = 0x34;	//Y-Axis Data 0
+//char DATAY1 = 0x35;	//Y-Axis Data 1
+//char DATAZ0 = 0x36;	//Z-Axis Data 0
+//char DATAZ1 = 0x37;	//Z-Axis Data 1
+//int x ;
+//int y ;
+//int z ;
+
+//gyro addresses as specified in datasheet
+const char ITG3205DEVICE=0x68;//addr pin is low
+const char WHO_AM_I_GYRO=0;
+const char SMPLRT_DIV_GYRO=0x15;
+const char DLPF_FS_GYRO=0x16;
+const char INT_CFG_GYRO=0x17;
+const char INT_STATUS_GYRO=0x1A;
+const char TEMP_OUT_H_GYRO=0x1B;
+const char TEMP_OUT_L_GYRO=0x1C;
+const char GYRO_XOUT_H_GYRO=0x1D;
+const char GYRO_XOUT_L_GYRO=0x1E;
+const char GYRO_YOUT_H_GYRO=0x1F;
+const char GYRO_YOUT_L_GYRO=0x20;
+const char GYRO_ZOUT_H_GYRO=0x21;
+const char GYRO_ZOUT_L_GYRO=0x22;
+const char PWR_MGM_GYRO=0x23;
+
+//compass HMC5883L addresses
+const char HMC5883LDEVICE=0x1E;
+const char CNFG_REG_A_MAGNETO=00;
+const char CNFG_REG_B_MAGNETO=1;
+const char MODE_REG_MAGNETO=2;
+const char DATA_X_H_MAGNETO=3;
+const char DATA_X_L_MAGNETO=4;
+const char DATA_Z_H_MAGNETO=5;
+const char DATA_Z_L_MAGNETO=6;
+const char DATA_Y_H_MAGNETO=7;
+const char DATA_Y_L_MAGNETO=8;
+const char STAT_REG_MAGNETO=9;
+const char ID_REG_A_MAGNETO=10;
+const char ID_REG_B_MAGNETO=11;
+const char ID_REG_C_MAGNETO=12;
+
+
+//adxl345:ox1D
+//0x32-0x37 is x0,x1,y0,y1,z0,z1
+//0x2D power_ctl
+//00101000 to enable it
+
+//hmc compass:ox1e
+//03-09 is x_msb,x_lsb, z_msb, z_lsb, y_msb, y_lsb
+//set register_A address 00 to 01111000
+//set register_B address 01 to default
+
+
+//==========================================================
+
+
+
+
+
+void initialize_12c(){
+Wire.begin();
+  //accelerometer initialization
+      //Put the ADXL345 into +/- 4G range by writing the value 0x01 to the DATA_FORMAT register.
+      writeTo(ADXL345DEVICE,DATA_FORMAT_ACCEL, 0x01);
+      //initialize each device with its setting
+      writeTo(ADXL345DEVICE,POWER_CTL_ACCEL, 0);
+      writeTo(ADXL345DEVICE,POWER_CTL_ACCEL, 0x16);
+      //Put the ADXL345 into Measurement Mode by writing 0x08 to the POWER_CTL register.
+      writeTo(ADXL345DEVICE,POWER_CTL_ACCEL, 0x08);
+  //--------------------------
+  
+  
+  //compass
+      writeTo(HMC5883LDEVICE,CNFG_REG_A_MAGNETO,B01111000);//8 bit average reading, 75 HZ output
+      writeTo(HMC5883LDEVICE,CNFG_REG_B_MAGNETO,B01000000);//8 bit average reading, 75 HZ output
+      writeTo(HMC5883LDEVICE,MODE_REG_MAGNETO, B00000000); //set in single read mode
+      
+      
+      
+      
+  //---------------------------
+  
+  //gyro ITG-3205
+  //you can set the address by writing to who am I, reading it will verify address
+  //
+      
+  writeTo(ITG3205DEVICE,SMPLRT_DIV_GYRO, 7);//set sample rate to 7ms
+  writeTo(ITG3205DEVICE,DLPF_FS_GYRO,B00011000);// set FS to initialize device, set lpf to 256HZ and sample rate to 8kHz
+  writeTo(ITG3205DEVICE,INT_CFG_GYRO,B01010000);//interupt settings, will be changed to use drdy
+  writeTo(ITG3205DEVICE,PWR_MGM_GYRO,B00000001);// exit standby, change clock source to x gyro
+
+//populate the acccel filter
+double dataAccel[3];
+for (int t=0;t<10;t++)
+	updateAccel(dataAccel);
+
+}
+
+void updateMagneto(int *dataMagneto){
+  byte buffer[6];
+  readFrom(HMC5883LDEVICE, DATA_X_H_MAGNETO,6,buffer);
+  int _x = (((int)buffer[0]) << 8) | buffer[1];
+  int _z = (((int)buffer[2]) << 8) | buffer[3];
+  int _y = (((int)buffer[4]) << 8) | buffer[5];
+  if(bitRead(_x,15))//if two byte negative
+		dataMagneto[0]=0xffff0000| _x;//make 4 byte negative
+		else
+		dataMagneto[0]=_x;//else leave alone
+  if(bitRead(_y,15))
+		dataMagneto[1]=0xffff0000|_y;
+		else
+		dataMagneto[1]=_y;
+  if(bitRead(_z,15))
+		dataMagneto[2]=0xffff0000|_z;
+		else
+		dataMagneto[2]=_z;
+
+
+//scaling 
+dataMagneto[0]=dataMagneto[0]+SCALING_MAGNETOMETER_X;
+dataMagneto[1]=dataMagneto[1]+SCALING_MAGNETOMETER_Y;
+dataMagneto[2]=dataMagneto[2]+SCALING_MAGNETOMETER_Z;
+
+
+}
+
+
+/*
+
+void updateCompass(){
+//hmc compass:ox1e
+//03-09 is x_msb,x_lsb, z_msb, z_lsb, y_msb, y_lsb
+//set register_A address 00 to 01111000
+//set register_B address 01 to default
+char HMCDEVICE=0x1E;
+readFrom(compass,0x03,1,_buff);
+readFrom(compass,0x04,1,_buff+1);
+readFrom(compass,0x05,1,_buff+2);
+readFrom(compass,0x06,1,_buff+3);
+readFrom(compass,0x07,1,_buff+4);
+readFrom(compass,0x08,1,_buff+5);
+//readFrom(compass,0x09,1,_buff+6);
+
+
+
+
+}*/
+void updateTemp(int *dataTemp){
+  byte buffer[2];
+  readFrom(ITG3205DEVICE, TEMP_OUT_H_GYRO,2,buffer);
+  int _Temp = (((int)buffer[0]) << 8) | buffer[1];
+
+  if(bitRead(_Temp,15))//if two byte negative
+		dataTemp[0]=0xffff0000| _Temp;//make 4 byte negative
+		else
+		dataTemp[0]=_Temp;//else leave alone
+}
+
+
+void updateGyro(int *dataGyro){
+  byte buffer[6];
+  readFrom(ITG3205DEVICE, GYRO_XOUT_H_GYRO,6,buffer);
+  int _x = (((int)buffer[0]) << 8) | buffer[1];
+  int _y = (((int)buffer[2]) << 8) | buffer[3];
+  int _z = (((int)buffer[4]) << 8) | buffer[5];
+  if(bitRead(_x,15))//if two byte negative
+		dataGyro[0]=0xffff0000| _x;//make 4 byte negative
+		else
+		dataGyro[0]=_x;//else leave alone
+  if(bitRead(_y,15))
+		dataGyro[1]=0xffff0000|_y;
+		else
+		dataGyro[1]=_y;
+  if(bitRead(_z,15))
+		dataGyro[2]=0xffff0000|_z;
+		else
+		dataGyro[2]=_z;
+
+
+dataGyro[0]=dataGyro[0]+SCALING_GYRO_X;
+dataGyro[1]=dataGyro[1]+SCALING_GYRO_Y;
+dataGyro[2]=dataGyro[2]+SCALING_GYRO_Z;
+
+}
+
+void updateAccel(double* dataAccel) {//update the accelerometer values
+  //make an array to hold data
+  byte buffer[6];
+  readFrom( ADXL345DEVICE, DATAX0_ACCEL, 6, buffer); //read the acceleration data from the ADXL345
+
+  // each axis reading comes in 10 bit resolution, ie 2 bytes.  Least Significat Byte first!!
+  // thus we are converting both bytes in to one int and adding 1s if it is in 2s compliment
+  
+  int _x = (((int)buffer[1]) << 8) | buffer[0];
+  int _y = (((int)buffer[3]) << 8) | buffer[2];
+  int _z = (((int)buffer[5]) << 8) | buffer[4];
+ 
+	if(bitRead(_x,15))//if two byte negative
+		Accelhistory_x[currentInsertion]= ((0xffff0000| _x));//make 4 byte negative
+		else
+		Accelhistory_x[currentInsertion]= (_x);//else leave alone
+	if(bitRead(_y,15))
+		Accelhistory_y[currentInsertion]= ((0xffff0000|_y));
+		else
+		Accelhistory_y[currentInsertion]= (_y);
+	if(bitRead(_z,15))
+		Accelhistory_z[currentInsertion]= ((0xffff0000|_z));
+		else
+		Accelhistory_z[currentInsertion]= (_z);
+
+		
+Accelhistory_z[currentInsertion]+=SCALING_ACCEL_Z;
+Accelhistory_y[currentInsertion]+=SCALING_ACCEL_Y;
+Accelhistory_x[currentInsertion]+=SCALING_ACCEL_X;
+
+currentInsertion=(currentInsertion+1)%10;
+dataAccel[0]=(double) vectorSum(Accelhistory_x,10)/10;
+dataAccel[1]=(double) vectorSum(Accelhistory_y,10)/10;
+dataAccel[2]=(double) vectorSum(Accelhistory_z,10)/10;
+
+}
+void writeTo(byte deviceAddress, byte registerAddress, byte byteToWrite){
+  Wire.beginTransmission(deviceAddress); // start transmission to device
+  Wire.write(registerAddress);             // send register address
+  Wire.write(byteToWrite);                 // send value to write
+  Wire.endTransmission();         // end transmission
+}
+
+void readFrom(byte deviceAddress, byte registerAddress, int numOfBytes, byte *buffer){
+  Wire.beginTransmission(deviceAddress); // start transmission to device
+  Wire.write(registerAddress);             // sends address to read from
+  Wire.endTransmission();         // end transmission
+
+  Wire.beginTransmission(deviceAddress); // start transmission to device
+  Wire.requestFrom(deviceAddress, numOfBytes);    // request bytes from device
+
+  int i = 0;
+  while(Wire.available())         // device may send less than requested (abnormal)
+  {
+    buffer[i] = Wire.read();    // receive a byte
+    i++;
+  }
+  Wire.endTransmission();         // end transmission
+}
+
+
+
+double DegreesYaw(){
+  int dataMagneto[3];
+updateMagneto(dataMagneto);
+  //updateMagneto(dataMagneto);
+  
+    //find angle code
+  double xy_image_magnitude=pow(  pow(dataMagneto[0],2)+pow(dataMagneto[1],2),.5);
+  double yaw_angle=acos((double) dataMagneto[0]/xy_image_magnitude);
+ return copysign(180/PI*yaw_angle,dataMagneto[1]); 
+}
+
+
+
+void DegreesRoll_Pitch(double* RP ){//RP is a two element float array
+// compare the image of accel data with 0,1,0
+double accelData[3];
+updateAccel(accelData);
+ double Z=copysign(1,-accelData[2]);
+
+
+RP[1]=PI-atan2(accelData[0],accelData[2])+PITCHCALIBRATION;
+RP[0]=atan2(accelData[1],sqrt(pow(accelData[0],2)+pow(accelData[2],2)))+ROLLCALIBRATION;
+
+}
+
+
+
+int vectorSum(int * array, int length){
+	int _sum=0;
+	for (int t=0;t<length;t++)
+		_sum+=array[t];
+	return _sum;
+}
+
+
+class accelerometer{
+
+
+
+
+};

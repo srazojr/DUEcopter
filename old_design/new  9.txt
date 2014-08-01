@@ -1,0 +1,162 @@
+/*
+have 4 global start and stop times and distances
+initialize function
+	start al proper inputs
+	set in to low
+	
+update ping distances
+this will attach 4 interrupts looking for high
+update all distances to 0
+send the high pulse and return
+
+start pulse interrupts
+start the time
+attach low interupts
+
+low interupts
+stop time
+dettach interupts
+calculate distance
+
+calculate distance
+check overflow
+set the distance
+*/
+#define PING_STAR_PIN 	46
+#define PING_PORT_PIN 	48
+#define PING_FRONT_PIN 	50
+#define PING_BACK_PIN 	52
+#define PING_TRIG_PIN 	35
+
+
+unsigned long ping_star_start_time, ping_port_start_time, ping_back_start_time,
+ping_front_start_time;
+float	      ping_star_distance, ping_port_distance, ping_back_distance,
+			    ping_front_distance;
+			  
+void ping_initialize(){
+pinMode(PING_TRIG_PIN, OUTPUT);
+digitalWrite(PING_TRIG_PIN, LOW);
+
+pinMode(PING_PORT_PIN, INPUT);
+pinMode(PING_STAR_PIN, INPUT);
+pinMode(PING_BACK_PIN, INPUT);
+pinMode(PING_FRONT_PIN, INPUT);
+return;
+}
+
+void ping_update_distances(){
+attachInterrupt(PING_FRONT_PIN, ping_front_rising, HIGH);
+attachInterrupt(PING_STAR_PIN, ping_star_rising, HIGH);
+attachInterrupt(PING_BACK_PIN, ping_back_rising, HIGH);
+attachInterrupt(PING_PORT_PIN, ping_port_rising, HIGH);
+
+digitalWrite(PING_TRIG_PIN, HIGH);
+delayMicroseconds(10);
+digitalWrite(PING_TRIG_PIN, LOW);
+return;
+}
+
+
+void ping_front_rising(){
+ping_front_start_time=micros();
+attachInterrupt(PING_FRONT_PIN, ping_front_falling, LOW);
+return;
+}
+void ping_front_falling(){
+unsigned long _stop=micros();
+//check overflow
+_stop=_stop-ping_front_start_time+((_stop<ping_front_start_time)?0xFFFFFFFF: 0x00000000);
+//convert  us to inches:
+//(1 total time/ 2 distances)*340.19m/s*(1s/10^6us)*(100cm/1m)*(1 inch/2.54cm)=1/149.328
+ping_front_distance=(float) _stop/149.328;
+
+//set ping_front_distance
+detachInterrupt(PING_FRONT_PIN);
+return;}
+
+
+void ping_back_rising(){
+ping_back_start_time=micros();
+attachInterrupt(PING_BACK_PIN, ping_back_falling, LOW);
+return;
+}
+void ping_back_falling(){
+unsigned long _stop=micros();
+//check overflow
+_stop=_stop-ping_back_start_time+((_stop<ping_back_start_time)?0xFFFFFFFF: 0x00000000);
+//convert  us to inches:
+//(1 total time/ 2 distances)*340.19m/s*(1s/10^6us)*(100cm/1m)*(1 inch/2.54cm)=1/149.328
+ping_back_distance=(float) _stop/149.328;
+
+//set ping_front_distance
+detachInterrupt(PING_BACK_PIN);
+return;}
+
+void ping_port_rising(){
+ping_port_start_time=micros();
+attachInterrupt(PING_PORT_PIN, ping_port_falling, LOW);
+return;  
+}
+void ping_port_falling(){
+
+unsigned long _stop=micros();
+//check overflow
+_stop=_stop-ping_port_start_time+((_stop<ping_port_start_time)?0xFFFFFFFF: 0x00000000);
+//convert  us to inches:
+//(1 total time/ 2 distances)*340.19m/s*(1s/10^6us)*(100cm/1m)*(1 inch/2.54cm)=1/149.328
+ping_port_distance=(float) _stop/149.328;
+
+//set ping_front_distance
+detachInterrupt(PING_PORT_PIN);
+return;}
+
+void ping_star_rising(){
+ping_star_start_time=micros();
+attachInterrupt(PING_STAR_PIN, ping_star_falling, LOW);
+return;
+}
+void ping_star_falling(){
+unsigned long _stop=micros();
+//check overflow
+_stop=_stop-ping_star_start_time+((_stop<ping_star_start_time)?0xFFFFFFFF: 0x00000000);
+//convert  us to inches:
+//(1 total time/ 2 distances)*340.19m/s*(1s/10^6us)*(100cm/1m)*(1 inch/2.54cm)=1/149.328
+ping_star_distance=(float) _stop/149.328;
+
+//set ping_front_distance
+detachInterrupt(PING_STAR_PIN);
+return;}
+
+
+
+
+
+
+
+
+
+
+//code:
+
+void setup(){
+  Serial.begin(9600);
+  ping_initialize();
+}
+
+void loop(){
+  ping_update_distances();
+  Serial.println("waiting");
+  while (Serial.read()==-1){}
+  
+  for (int p=0;p<=5;p++){
+  for (unsigned long t=0;t<40000;t++){}
+  Serial.print(".");
+  
+  }
+  Serial.print("PORT: ");Serial.println(ping_port_distance);
+  Serial.print("STAR: ");Serial.println(ping_star_distance);
+  Serial.print("FRONT: ");Serial.println(ping_front_distance);
+  Serial.print("back: ");Serial.println(ping_back_distance);
+  
+}
